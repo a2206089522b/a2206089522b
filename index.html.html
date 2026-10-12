@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI看见磁场——初中物理磁场仿真实验</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:"Microsoft Yahei",sans-serif;}
+body{background:#f8fafc;padding:10px;text-align:center;}
+h2{color:#226;width:100%;margin-bottom:8px;font-size:20px;}
+.info{color:#444;font-size:14px;margin-bottom:10px;}
+#canvas{border:2px solid #9ab;background:#fff;border-radius:8px;max-width:100%;}
+.ctrl{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+button{padding:6px 12px;font-size:14px;border:none;border-radius:6px;background:#2563eb;color:white;cursor:pointer;}
+button#reset{background:#666;}
+.tip{margin-top:8px;color:#666;font-size:13px;}
+</style>
+</head>
+<body>
+<h2>AI看见磁场——初探磁现象</h2>
+<div class="info">拖动小磁针，观察磁场方向；切换磁铁，观察磁感线分布（磁感线是物理模型，并非真实存在）</div>
+<canvas id="canvas" width="720" height="420"></canvas>
+<div class="ctrl">
+<button id="btnBar">条形磁铁</button>
+<button id="btnSame">同名磁极(N-N)</button>
+<button id="btnDiff">异名磁极(N-S)</button>
+<button id="reset">重置</button>
+</div>
+<div class="tip">操作：鼠标拖动画布上的小磁针，实时显示该点磁场方向；磁感线疏密代表磁场强弱</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let magnetList = [];
+let compass = {x:550,y:210,angle:0,drag:false};
+
+// 磁极类
+class Pole{
+    constructor(x,y,sign){this.x=x;this.y=y;this.sign=sign;this.strength=6000;}
+    getField(px,py){
+        const dx = px - this.x;
+        const dy = py - this.y;
+        const r2 = dx*dx + dy*dy;
+        const r = Math.sqrt(r2);
+        if(r<10) return {bx:0,by:0};
+        const B = this.sign * this.strength / r2;
+        return {bx: B * dx/r, by: B * dy/r};
+    }
+}
+// 初始化条形磁铁
+function initBarMagnet(){
+    magnetList = [];
+    magnetList.push(new Pole(220,210, 1)); // N极
+    magnetList.push(new Pole(420,210,-1)); // S极
+}
+function initSamePole(){
+    magnetList = [];
+    magnetList.push(new Pole(220,210, 1));
+    magnetList.push(new Pole(420,210, 1));
+}
+function initDiffPole(){
+    magnetList = [];
+    magnetList.push(new Pole(220,210, 1));
+    magnetList.push(new Pole(420,210,-1));
+}
+// 合磁场
+function totalField(x,y){
+    let bx=0,by=0;
+    for(let p of magnetList){
+        const f = p.getField(x,y);
+        bx += f.bx; by += f.by;
+    }
+    return {bx,by};
+}
+// 绘制磁感线
+function drawFieldLine(sx,sy){
+    let x=sx,y=sy;
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+    for(let i=0;i<1200;i++){
+        const f = totalField(x,y);
+        const b = Math.sqrt(f.bx*f.bx + f.by*f.by);
+        if(b<0.01) break;
+        const step = 2.2;
+        x += f.bx / b * step;
+        y += f.by / b * step;
+        if(x<0||x>canvas.width||y<0||y>canvas.height) break;
+        ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle="#4488dd";ctx.lineWidth=1;ctx.stroke();
+}
+// 绘制磁铁
+function drawMagnets(){
+    for(let i=0;i<magnetList.length;i+=2){
+        if(!magnetList[i+1]) continue;
+        const n = magnetList[i];
+        const s = magnetList[i+1];
+        ctx.fillStyle="#ef4444";
+        ctx.fillRect(n.x, n.y-22, s.x-n.x, 44);
+        ctx.fillStyle="#2277dd";
+        ctx.fillText("N",n.x+8,n.y+6);
+        ctx.fillText("S",s.x-18,s.y+6);
+    }
+}
+// 绘制小磁针
+function drawCompass(){
+    const f = totalField(compass.x, compass.y);
+    compass.angle = Math.atan2(f.by,f.bx);
+    ctx.save();
+    ctx.translate(compass.x,compass.y);
+    ctx.rotate(compass.angle);
+    ctx.fillStyle="#f44";
+    ctx.beginPath();
+    ctx.moveTo(16,0);ctx.lineTo(-8,-7);ctx.lineTo(-8,7);ctx.closePath();ctx.fill();
+    ctx.fillStyle="#26f";
+    ctx.beginPath();
+    ctx.moveTo(-16,0);ctx.lineTo(8,-7);ctx.lineTo(8,7);ctx.closePath();ctx.fill();
+    ctx.restore();
+}
+// 主渲染循环
+function render(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // 绘制多组磁感线
+    for(let p of magnetList){
+        for(let a=0;a<Math.PI*2;a+=Math.PI/5){
+            drawFieldLine(p.x+Math.cos(a)*22,p.y+Math.sin(a)*22);
+        }
+    }
+    drawMagnets();
+    drawCompass();
+    requestAnimationFrame(render);
+}
+// 鼠标事件
+canvas.onmousedown=(e)=>{
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const dx=mx-compass.x, dy=my-compass.y;
+    if(Math.sqrt(dx*dx+dy*dy)<22) compass.drag=true;
+};
+canvas.onmousemove=(e)=>{
+    if(!compass.drag) return;
+    const rect = canvas.getBoundingClientRect();
+    compass.x = e.clientX - rect.left;
+    compass.y = e.clientY - rect.top;
+};
+canvas.onmouseup=()=>compass.drag=false;
+// 移动端触摸支持
+canvas.ontouchstart=(e)=>{
+    e.preventDefault();
+    const t = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const mx = t.clientX - rect.left;
+    const my = t.clientY - rect.top;
+    const dx=mx-compass.x, dy=my-compass.y;
+    if(Math.sqrt(dx*dx+dy*dy)<22) compass.drag=true;
+};
+canvas.ontouchmove=(e)=>{
+    e.preventDefault();
+    if(!compass.drag) return;
+    const t = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    compass.x = t.clientX - rect.left;
+    compass.y = t.clientY - rect.top;
+};
+canvas.ontouchend=()=>compass.drag=false;
+
+// 按钮绑定
+document.getElementById("btnBar").onclick=()=>initBarMagnet();
+document.getElementById("btnSame").onclick=()=>initSamePole();
+document.getElementById("btnDiff").onclick=()=>initDiffPole();
+document.getElementById("reset").onclick=()=>{
+    initBarMagnet();
+    compass={x:550,y:210,angle:0,drag:false};
+};
+
+initBarMagnet();
+render();
+</script>
+</body>
+</html>
+<!-- （注：内容由AI生成） -->
